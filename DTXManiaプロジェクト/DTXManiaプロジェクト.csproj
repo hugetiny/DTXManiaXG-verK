@@ -144,6 +144,8 @@
     <Compile Include="コード\ステージ\07.演奏\CAct演奏Combo共通.cs" />
     <Compile Include="コード\ステージ\07.演奏\CAct演奏Danger共通.cs" />
     <Compile Include="コード\ステージ\07.演奏\CAct演奏RGB共通.cs" />
+    <Compile Include="コード\ステージ\07.演奏\CAct演奏FCEXC演出.cs" />
+    <Compile Include="コード\ステージ\07.演奏\CAct演奏StageClear.cs" />
     <Compile Include="コード\ステージ\07.演奏\CAct演奏WailingBonus共通.cs" />
     <Compile Include="コード\ステージ\07.演奏\CAct演奏ゲージ共通.cs" />
     <Compile Include="コード\ステージ\07.演奏\CAct演奏スクロール速度.cs" />

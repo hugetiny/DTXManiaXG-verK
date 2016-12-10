@@ -668,6 +668,7 @@ namespace DTXMania
 		protected CAct演奏演奏情報 actPlayInfo;
 		protected CAct演奏RGB共通 actRGB;
 		public CAct演奏スコア共通 actScore;
+        protected CAct演奏StageClear actStageClear;
 		protected CAct演奏ステージ失敗 actStageFailed;
 		protected CAct演奏ステータスパネル共通 actStatusPanels;
 		protected CAct演奏WailingBonus共通 actWailingBonus;
@@ -3498,9 +3499,8 @@ namespace DTXMania
 						return true;
 					}
 					break;
-
 				case CStage.Eフェーズ.演奏_STAGE_CLEAR_フェードアウト:
-					if ( this.actFOClear.On進行描画() == 0 )
+					if ( this.actFO.On進行描画() == 0 )
 					{
 						break;
 					}

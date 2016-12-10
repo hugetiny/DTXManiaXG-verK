@@ -249,7 +249,7 @@ namespace FDK
 		public CDirectShow()
 		{
 		}
-		public CDirectShow( string fileName, IntPtr hWnd, bool bオーディオレンダラなし )
+		public CDirectShow( string fileName, IntPtr hWnd, bool bMemoryRenderer, bool bオーディオレンダラなし )
 		{
 			// 初期化。
 
@@ -328,8 +328,21 @@ namespace FDK
 
 
 				// 音声のみ？
-
+                if( bMemoryRenderer )
 				{
+					IBaseFilter videoRenderer;
+					IPin videoInputPin;
+					CDirectShow.tビデオレンダラとその入力ピンを探して返す( this.graphBuilder, out videoRenderer, out videoInputPin );
+					if( videoRenderer == null )
+						this.b音声のみ = true;
+					else
+					{
+						C共通.tCOMオブジェクトを解放する( ref videoInputPin );
+						C共通.tCOMオブジェクトを解放する( ref videoRenderer );
+					}
+				}
+                else
+                {
 					IBaseFilter videoRenderer;
 					IPin videoInputPin;
 					IBaseFilter audioRenderer;
@@ -346,7 +359,7 @@ namespace FDK
 						C共通.tCOMオブジェクトを解放する(ref audioInputPin);
 						C共通.tCOMオブジェクトを解放する(ref audioRenderer);
 					}
-				}
+                }
 
 
 				// イメージ情報を取得。
@@ -841,7 +854,7 @@ namespace FDK
 				C共通.tCOMオブジェクトを解放する( ref audioRenderer );
 			}
 		}
-		public static void ConnectNullRendererFromSampleGrabber(IGraphBuilder graphBuilder, IBaseFilter sampleGrabber)
+		public static void ConnectNullRendererFromSampleGrabber(IGraphBuilder graphBuilder, IBaseFilter sampleGrabber, bool bMemoryRenderer )
 		{
 			int hr = 0;
 			IBaseFilter videoRenderer = null;
@@ -849,79 +862,128 @@ namespace FDK
 			IBaseFilter audioRenderer = null;
 			IPin audioRendererInputPin = null;
 			IPin connectedOutputPin = null;
+            IPin rendererConnectedOutputPin = null;
 			IPin nullRendererInputPin = null;
 			IPin grabberOutputPin = null;
 			IPin grabberOutputConnectedPin = null;
 
 			try
 			{
-				// videoRenderer を探す。
-				CDirectShow.SearchMMRenderers(graphBuilder, out videoRenderer, out videoRendererInputPin, out audioRenderer, out audioRendererInputPin);
-				if (videoRenderer != null && audioRendererInputPin != null)
-				{
-					// 既存のレンダラにつながっているピン対を取得
-					hr = videoRendererInputPin.ConnectedTo(out connectedOutputPin);
-					DsError.ThrowExceptionForHR(hr);
+                if( bMemoryRenderer )
+                {
+                    // videoRenderer を探す。
+    				CDirectShow.tビデオレンダラとその入力ピンを探して返す(graphBuilder, out videoRenderer, out videoRendererInputPin);
+	    			if(videoRenderer==null || videoRendererInputPin ==null)
+		    		{
+			    		return;
+				    }
+    				// 既存のレンダラにつながっているピン対を取得
+	    			hr = videoRendererInputPin.ConnectedTo(out connectedOutputPin);
+		    		DsError.ThrowExceptionForHR(hr);
+                    hr = videoRendererInputPin.ConnectedTo(out rendererConnectedOutputPin);
+				    DsError.ThrowExceptionForHR(hr);
+				
+    				// それらを切断。前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
+                    hr = videoRendererInputPin.Disconnect();
+		    		DsError.ThrowExceptionForHR(hr);
+			    	hr = connectedOutputPin.Disconnect();
+				    DsError.ThrowExceptionForHR(hr);
+				
+    				// ビデオレンダラをグラフから除去し、ヌルレンダラを追加
+	    			hr = graphBuilder.RemoveFilter(videoRenderer);
+		    		DsError.ThrowExceptionForHR(hr);
+			    	IBaseFilter nullRenderer = new NullRenderer() as IBaseFilter;
+				    hr = graphBuilder.AddFilter(nullRenderer, "Null Renderer");
+    				DsError.ThrowExceptionForHR(hr);
 
-					// それらを切断。前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
-					hr = videoRendererInputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
-					hr = connectedOutputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
+	    			// nullRenderer の入力ピンを探す。
+		    		hr = nullRenderer.FindPin("In", out nullRendererInputPin);
+			    	DsError.ThrowExceptionForHR(hr);
+				    hr = nullRendererInputPin.Disconnect();
+    				DsError.ThrowExceptionForHR(hr);
 
-					// ビデオレンダラをグラフから除去し、ヌルレンダラを追加
-					hr = graphBuilder.RemoveFilter(videoRenderer);
-					DsError.ThrowExceptionForHR(hr);
-					IBaseFilter nullRenderer = new NullRenderer() as IBaseFilter;
-					hr = graphBuilder.AddFilter(nullRenderer, "Video Null Renderer");
-					DsError.ThrowExceptionForHR(hr);
+	    			// グラバの Out と Null Renderer の In を接続する。
+		    		hr = sampleGrabber.FindPin("Out", out grabberOutputPin);
+			    	DsError.ThrowExceptionForHR(hr);
+				    hr = grabberOutputPin.ConnectedTo(out grabberOutputConnectedPin);
+    				DsError.ThrowExceptionForHR(hr);
+	    			hr = grabberOutputConnectedPin.Disconnect();
+		    		DsError.ThrowExceptionForHR(hr);
+			    	hr = grabberOutputPin.Disconnect();
+				    DsError.ThrowExceptionForHR(hr);
+    				hr = grabberOutputPin.Connect(nullRendererInputPin, null);
+	    			DsError.ThrowExceptionForHR(hr);
+                }
+                else
+                {
+			    	// videoRenderer を探す。
+		    		CDirectShow.SearchMMRenderers(graphBuilder, out videoRenderer, out videoRendererInputPin, out audioRenderer, out audioRendererInputPin);
+	    			if (videoRenderer != null && audioRendererInputPin != null)
+    				{
+				    	// 既存のレンダラにつながっているピン対を取得
+			    		hr = videoRendererInputPin.ConnectedTo(out connectedOutputPin);
+		    			DsError.ThrowExceptionForHR(hr);
 
-					// nullRenderer の入力ピンを探す。
-					hr = nullRenderer.FindPin("In", out nullRendererInputPin);
-					DsError.ThrowExceptionForHR(hr);
-					hr = nullRendererInputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
+	    				// それらを切断。前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
+    					hr = videoRendererInputPin.Disconnect();
+					    DsError.ThrowExceptionForHR(hr);
+				    	hr = connectedOutputPin.Disconnect();
+			    		DsError.ThrowExceptionForHR(hr);
 
-					// グラバの Out と Null Renderer の In を接続する。
-					hr = sampleGrabber.FindPin("Out", out grabberOutputPin);
-					DsError.ThrowExceptionForHR(hr);
-					hr = grabberOutputPin.ConnectedTo(out grabberOutputConnectedPin);
-					DsError.ThrowExceptionForHR(hr);
-					hr = grabberOutputConnectedPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
-					hr = grabberOutputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
-					hr = grabberOutputPin.Connect(nullRendererInputPin, null);
-					DsError.ThrowExceptionForHR(hr);
-				}
+		    			// ビデオレンダラをグラフから除去し、ヌルレンダラを追加
+	    				hr = graphBuilder.RemoveFilter(videoRenderer);
+    					DsError.ThrowExceptionForHR(hr);
+					    IBaseFilter nullRenderer = new NullRenderer() as IBaseFilter;
+				    	hr = graphBuilder.AddFilter(nullRenderer, "Video Null Renderer");
+			    		DsError.ThrowExceptionForHR(hr);
 
-				if( audioRenderer != null && audioRendererInputPin != null )
-				{
-					C共通.tCOMオブジェクトを解放する(ref connectedOutputPin);
+		    			// nullRenderer の入力ピンを探す。
+	    				hr = nullRenderer.FindPin("In", out nullRendererInputPin);
+    					DsError.ThrowExceptionForHR(hr);
+					    hr = nullRendererInputPin.Disconnect();
+				    	DsError.ThrowExceptionForHR(hr);
 
-					// 既存のレンダラにつながっているピン対を取得
-					hr = audioRendererInputPin.ConnectedTo(out connectedOutputPin);
-					DsError.ThrowExceptionForHR(hr);
+			    		// グラバの Out と Null Renderer の In を接続する。
+		    			hr = sampleGrabber.FindPin("Out", out grabberOutputPin);
+	    				DsError.ThrowExceptionForHR(hr);
+    					hr = grabberOutputPin.ConnectedTo(out grabberOutputConnectedPin);
+					    DsError.ThrowExceptionForHR(hr);
+				    	hr = grabberOutputConnectedPin.Disconnect();
+			    		DsError.ThrowExceptionForHR(hr);
+		    			hr = grabberOutputPin.Disconnect();
+	    				DsError.ThrowExceptionForHR(hr);
+    					hr = grabberOutputPin.Connect(nullRendererInputPin, null);
+					    DsError.ThrowExceptionForHR(hr);
+				    }
 
-					// それらを切断。前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
-					hr = audioRendererInputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
-					hr = connectedOutputPin.Disconnect();
-					DsError.ThrowExceptionForHR(hr);
+		    		if( audioRenderer != null && audioRendererInputPin != null )
+	    			{
+			    		C共通.tCOMオブジェクトを解放する(ref connectedOutputPin);
 
-					// ビデオレンダラをグラフから除去し、ヌルレンダラを追加
-					hr = graphBuilder.RemoveFilter(audioRenderer);
-					DsError.ThrowExceptionForHR(hr);
-					IBaseFilter nullRenderer = new NullRenderer() as IBaseFilter;
-					hr = graphBuilder.AddFilter(nullRenderer, "Audio Null Renderer");
-					DsError.ThrowExceptionForHR(hr);
+    					// 既存のレンダラにつながっているピン対を取得
+					    hr = audioRendererInputPin.ConnectedTo(out connectedOutputPin);
+				    	DsError.ThrowExceptionForHR(hr);
 
-					C共通.tCOMオブジェクトを解放する(ref nullRendererInputPin);
-					hr = nullRenderer.FindPin("In", out nullRendererInputPin);
-					DsError.ThrowExceptionForHR(hr);
-					hr = connectedOutputPin.Connect(nullRendererInputPin, null);
-					DsError.ThrowExceptionForHR(hr);
-				}
+			    		// それらを切断。前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
+		    			hr = audioRendererInputPin.Disconnect();
+	    				DsError.ThrowExceptionForHR(hr);
+    					hr = connectedOutputPin.Disconnect();
+					    DsError.ThrowExceptionForHR(hr);
+
+				    	// ビデオレンダラをグラフから除去し、ヌルレンダラを追加
+			    		hr = graphBuilder.RemoveFilter(audioRenderer);
+	       				DsError.ThrowExceptionForHR(hr);
+    					IBaseFilter nullRenderer = new NullRenderer() as IBaseFilter;
+					    hr = graphBuilder.AddFilter(nullRenderer, "Audio Null Renderer");
+				    	DsError.ThrowExceptionForHR(hr);
+
+			    		C共通.tCOMオブジェクトを解放する(ref nullRendererInputPin);
+		    			hr = nullRenderer.FindPin("In", out nullRendererInputPin);
+	    				DsError.ThrowExceptionForHR(hr);
+    					hr = connectedOutputPin.Connect(nullRendererInputPin, null);
+					    DsError.ThrowExceptionForHR(hr);
+				    }
+                }
 			}
 			finally
 			{
@@ -933,6 +995,50 @@ namespace FDK
 				C共通.tCOMオブジェクトを解放する(ref nullRendererInputPin);
 				C共通.tCOMオブジェクトを解放する(ref grabberOutputPin);
 				C共通.tCOMオブジェクトを解放する(ref grabberOutputConnectedPin);
+			}
+		}
+
+		public static void tビデオレンダラをグラフから除去する( IGraphBuilder graphBuilder )
+		{
+			int hr = 0;
+
+			IBaseFilter videoRenderer = null;
+			IPin renderInputPin = null;
+			IPin connectedOutputPin = null;
+
+			try
+			{
+				// videoRenderer を探す。
+				
+				CDirectShow.tビデオレンダラとその入力ピンを探して返す( graphBuilder, out videoRenderer, out renderInputPin );
+				if( videoRenderer == null || renderInputPin == null )
+					return;		// なかった
+
+				#region [ renderInputPin へ接続している前段の出力ピン connectedOutputPin を探す。 ]
+				//-----------------
+				renderInputPin.ConnectedTo( out connectedOutputPin );
+				//-----------------
+				#endregion
+
+				if( connectedOutputPin == null )
+					return;		// なかった
+
+
+				// 前段の出力ピンとビデオレンダラの入力ピンを切断する。双方向から切断しないとグラフから切り離されないので注意。
+
+				renderInputPin.Disconnect();
+				connectedOutputPin.Disconnect();
+
+
+				// ビデオレンダラをグラフから除去。
+
+				graphBuilder.RemoveFilter( videoRenderer );
+			}
+			finally
+			{
+				C共通.tCOMオブジェクトを解放する( ref connectedOutputPin );
+				C共通.tCOMオブジェクトを解放する( ref renderInputPin );
+				C共通.tCOMオブジェクトを解放する( ref videoRenderer );
 			}
 		}
 
@@ -980,6 +1086,159 @@ namespace FDK
 
 			return firstInputPin;
 		}
+
+		private static void tビデオレンダラとその入力ピンを探して返す( IFilterGraph graph, out IBaseFilter videoRenderer, out IPin inputPin )
+		{
+			int hr = 0;
+			string strフィルタ名 = null;
+			string strピンID = null;
+
+
+			// ビデオレンダラと入力ピンを探し、そのフィルタ名とピンIDを控える。
+
+			IEnumFilters eFilters;
+			hr = graph.EnumFilters( out eFilters );
+			DsError.ThrowExceptionForHR( hr );
+			try
+			{
+				var filters = new IBaseFilter[ 1 ];
+				while( eFilters.Next( 1, filters, IntPtr.Zero ) == CWin32.S_OK )
+				{
+					try
+					{
+						#region [ 出力ピンがない（レンダラである）ことを確認する。]
+						//-----------------
+						IEnumPins ePins;
+						bool b出力ピンがある = false;
+
+						hr = filters[ 0 ].EnumPins( out ePins );
+						DsError.ThrowExceptionForHR( hr );
+						try
+						{
+							var pins = new IPin[ 1 ];
+							while( ePins.Next( 1, pins, IntPtr.Zero ) == CWin32.S_OK )
+							{
+								try
+								{
+									if( b出力ピンがある )
+										continue;
+
+									PinDirection dir;
+									hr = pins[ 0 ].QueryDirection( out dir );
+									DsError.ThrowExceptionForHR( hr );
+									if( dir == PinDirection.Output )
+										b出力ピンがある = true;
+								}
+								finally
+								{
+									C共通.tCOMオブジェクトを解放する( ref pins[ 0 ] );
+								}
+							}
+						}
+						finally
+						{
+							C共通.tCOMオブジェクトを解放する( ref ePins );
+						}
+
+						if( b出力ピンがある )
+							continue;	// 次のフィルタへ
+
+						//-----------------
+						#endregion
+						#region [ 接続中の入力ピンが MEDIATYPE_Video に対応していたら、フィルタ名とピンIDを取得する。]
+						//-----------------
+						hr = filters[ 0 ].EnumPins( out ePins );
+						DsError.ThrowExceptionForHR( hr );
+						try
+						{
+							var pins = new IPin[ 1 ];
+							while( ePins.Next( 1, pins, IntPtr.Zero ) == CWin32.S_OK )
+							{
+								try
+								{
+									if( !string.IsNullOrEmpty( strフィルタ名 ) )
+										continue;
+
+									var mediaType = new AMMediaType();
+
+									#region [ 現在接続中の MediaType を取得。つながってなければ次のピンへ。]
+									//-----------------
+									hr = pins[ 0 ].ConnectionMediaType( mediaType );
+									if( hr == CWin32.VFW_E_NOT_CONNECTED )
+										continue;	// つながってない
+									DsError.ThrowExceptionForHR( hr );
+									//-----------------
+									#endregion
+
+									try
+									{
+										if( mediaType.majorType.Equals( MediaType.Video ) )
+										{
+											#region [ フィルタ名取得！]
+											//-----------------
+											FilterInfo filterInfo;
+											hr = filters[ 0 ].QueryFilterInfo( out filterInfo );
+											DsError.ThrowExceptionForHR( hr );
+											strフィルタ名 = filterInfo.achName;
+											C共通.tCOMオブジェクトを解放する( ref filterInfo.pGraph );
+											//-----------------
+											#endregion
+											#region [ ピンID取得！]
+											//-----------------
+											hr = pins[ 0 ].QueryId( out strピンID );
+											DsError.ThrowExceptionForHR( hr );
+											//-----------------
+											#endregion
+
+											continue;	// 次のピンへ。
+										}
+									}
+									finally
+									{
+										DsUtils.FreeAMMediaType( mediaType );
+									}
+								}
+								finally
+								{
+									C共通.tCOMオブジェクトを解放する( ref pins[ 0 ] );
+								}
+							}
+						}
+						finally
+						{
+							C共通.tCOMオブジェクトを解放する( ref ePins );
+						}
+
+						//-----------------
+						#endregion
+					}
+					finally
+					{
+						C共通.tCOMオブジェクトを解放する( ref filters[ 0 ] );
+					}
+				}
+			}
+			finally
+			{
+				C共通.tCOMオブジェクトを解放する( ref eFilters );
+			}
+
+
+			// 改めてフィルタ名とピンIDからこれらのインターフェースを取得し、戻り値として返す。
+
+			videoRenderer = null;
+			inputPin = null;
+
+			if( !string.IsNullOrEmpty( strフィルタ名 ) )
+			{
+				hr = graph.FindFilterByName( strフィルタ名, out videoRenderer );
+				DsError.ThrowExceptionForHR( hr );
+
+				hr = videoRenderer.FindPin( strピンID, out inputPin );
+				DsError.ThrowExceptionForHR( hr );
+			}
+		}
+
 		private static void SearchMMRenderers( IFilterGraph graph, out IBaseFilter videoRenderer, out IPin inputVPin, out IBaseFilter audioRenderer, out IPin inputAPin )
 		{
 			int hr = 0;

@@ -91,7 +91,7 @@ namespace FDK
 
 			// Null レンダラに接続しないとウィンドウが表示される。
 			// また、レンダリングを行わないため処理速度を向上できる。
-			CDirectShow.ConnectNullRendererFromSampleGrabber(builder, grabber as IBaseFilter);
+			CDirectShow.ConnectNullRendererFromSampleGrabber(builder, grabber as IBaseFilter, false);
 			CDirectShow.tグラフを解析しデバッグ出力する(builder);
 
 			IVideoWindow videoWindow = builder as IVideoWindow;

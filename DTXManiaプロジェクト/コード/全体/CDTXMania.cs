@@ -1731,12 +1731,16 @@ for (int i = 0; i < 3; i++) {
 		#endregion
         public static CDirectShow t失敗してもスキップ可能なDirectShowを生成する( string fileName, IntPtr hWnd, bool bオーディオレンダラなし )
         {
+            return t失敗してもスキップ可能なDirectShowを生成する( fileName, hWnd, bオーディオレンダラなし, false );
+        }
+        public static CDirectShow t失敗してもスキップ可能なDirectShowを生成する( string fileName, IntPtr hWnd, bool bオーディオレンダラなし, bool bMemoryRenderer )
+        {
             CDirectShow ds = null;
             if( File.Exists( fileName ) )
             {
                 try
                 {
-                    ds = new CDirectShow( fileName, hWnd, bオーディオレンダラなし );
+                    ds = new CDirectShow( fileName, hWnd, bMemoryRenderer, bオーディオレンダラなし );
                 }
                 catch( FileNotFoundException )
                 {
